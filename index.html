@@ -1,0 +1,1149 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Mob Field</title>
+    <script src="//cdn.jsdelivr.net/phaser/2.2.2/phaser.min.js"></script>
+    <style>
+        header {
+            background-color: black;
+            color: white;
+            text-align: center;
+            padding: 5px;
+        }
+        
+        section {
+            line-height: 30px;
+            float: left;
+            padding: 5px;
+        }
+        
+        aside {
+            float: left;
+            padding: 10px;
+        }
+        
+        footer {
+            background-color: black;
+            color: white;
+            clear: both;
+            text-align: center;
+            padding: 5px;
+        }
+    </style>
+</head>
+
+<body style="background-color:#ff9900">
+    <header>
+        <h1>Mob Field</h1>
+    </header>
+
+    <section>
+        <p id="room"></p>
+        <button onclick="addNewMonster()">Add Monster</button>
+    </section>
+
+    <aside>
+
+        <table id="info">
+
+        </table>
+
+    </aside>
+
+
+    <script type="text/javascript">
+        var GRAVITY = 300;
+        var WALL_THICKNESS = 4;
+        var DEBUG_RELOAD = true;
+
+        var game = new Phaser.Game(800, 600, Phaser.AUTO, 'room', {
+            preload: preload,
+            create: create,
+            update: update,
+            render: render
+        });
+
+        var walls;
+        var monsters;
+        var monsterList;
+
+        var playerCollisionGroup;
+        var outerWallsCollisionGroup;
+        var innerWallsCollisionGroup;
+        var mouseCollisionGroup;
+
+        var mouseBody;
+        var mouseSpring;
+        var mouseTarget;
+
+        var selectedMonster;
+
+        var saveTimer;
+
+        function preload() {
+
+            game.load.image('sky', 'assets/sky.png');
+            game.load.image('wall_large_horizontal', 'assets/wall_large_horizontal.png');
+            game.load.image('wall_small_horizontal', 'assets/wall_small_horizontal.png');
+            game.load.image('wall_very_small_horizontal', 'assets/wall_very_small_horizontal.png');
+            game.load.image('wall_large_vertical', 'assets/wall_large_vertical.png');
+            game.load.image('wall_small_vertical', 'assets/wall_small_vertical.png');
+            game.load.image('healthChunk', 'assets/healthTile.png');
+            game.load.spritesheet('porygon', 'assets/spritesheet-porygon.png', 34, 32);
+            game.load.spritesheet('dragonite', 'assets/spritesheet-dragonnite.png', 34, 32);
+            game.load.spritesheet('slowking', 'assets/spritesheet-slowking.png', 34, 32);
+            game.load.image('grass', 'assets/tile_grass.png');
+            //game.load.image('avatar-porygon', 'assets/porygon-icon.png');
+            //game.load.image('avatar-dragonite', 'assets/dragonit-icon.png');
+            //game.load.image('avatar-slowking', 'assets/slowking-icon.png');
+        }
+
+        function create() {
+            //  A simple background for our game
+            var cam = game.add.tileSprite(0, 0, 800, 600, 'grass');
+
+            saveTimer = game.time.now;
+
+            createPhysics();
+
+            createWalls();
+
+            createTextLabels();
+
+            createMonsters();
+
+            createMouse();
+
+            selectedMonster = monsterList[0];
+        }
+
+        function createPhysics() {
+            //Enable p2 physics
+            game.physics.startSystem(Phaser.Physics.P2JS)
+
+            //  Turn on impact events for the world, without this we get no collision callbacks
+            game.physics.p2.setImpactEvents(true);
+
+            game.physics.p2.restitution = 0.8;
+            game.physics.p2.friction = 20;
+            //game.physics.p2.gravity.y = 300;
+
+            //Create Collision Group for Walls
+            outerWallsCollisionGroup = game.physics.p2.createCollisionGroup();
+            innerWallsCollisionGroup = game.physics.p2.createCollisionGroup();
+            //Create Collision Group
+            playerCollisionGroup = game.physics.p2.createCollisionGroup();
+            //Create Collision Group for Mouse
+            mouseCollisionGroup = game.physics.p2.createCollisionGroup();
+
+            //  This part is vital if you want the objects with their own collision groups to still collide with the world bounds
+            //  (which we do) - what this does is adjust the bounds to use its own collision group.
+            game.physics.p2.updateBoundsCollisionGroup();
+        }
+
+        function createWalls() {
+
+            //Create walls group
+            walls = game.add.group();
+
+            //Enable Physics for walls
+            walls.enableBody = true;
+            walls.physicsBodyType = Phaser.Physics.P2JS;
+
+            //Create Outwalls
+            var outer_wall_arr = [];
+            //Create Top wall
+            outer_wall_arr.push(walls.create(400, 0, 'wall_large_horizontal'));
+            //Create Bottom Wall
+            outer_wall_arr.push(walls.create(400, 600, 'wall_large_horizontal'));
+            //Create Left Wall
+            outer_wall_arr.push(walls.create(0, 300, 'wall_large_vertical'));
+            //Create Right Wall
+            outer_wall_arr.push(walls.create(800, 300, 'wall_large_vertical'));
+
+
+            //Create Inner Walls
+            var inner_wall_arr = [];
+            //Create Inside Walls
+            //Create Top of Box
+            inner_wall_arr.push(walls.create(400, 200, 'wall_very_small_horizontal'));
+            //Create Bottom of Box
+            inner_wall_arr.push(walls.create(400, 400, 'wall_very_small_horizontal'));
+            //Create Left of Box
+            inner_wall_arr.push(walls.create(300, 300, 'wall_small_vertical'));
+            //Create Right of Box
+            inner_wall_arr.push(walls.create(500, 300, 'wall_small_vertical'));
+
+            //Create Dividing Walls
+            //Create Top
+            inner_wall_arr.push(walls.create(400, 100, 'wall_small_vertical'));
+            //Create Bottom
+            inner_wall_arr.push(walls.create(400, 500, 'wall_small_vertical'));
+            //Create Left
+            inner_wall_arr.push(walls.create(150, 300, 'wall_small_horizontal'));
+            //Create Right
+            inner_wall_arr.push(walls.create(650, 300, 'wall_small_horizontal'));
+
+            //Set physics for inner walls
+            for (var k of inner_wall_arr) {
+                k.body.static = true;
+                k.body.setCollisionGroup(innerWallsCollisionGroup);
+                k.body.collides(playerCollisionGroup);
+            }
+
+            //Set physics for outer walls
+            for (var k of outer_wall_arr) {
+                k.body.static = true;
+                k.body.setCollisionGroup(outerWallsCollisionGroup);
+                k.body.collides([playerCollisionGroup, mouseCollisionGroup]);
+            }
+        }
+
+        function createTextLabels() {
+            var style = {
+                font: "24px Arial",
+                align: "center",
+            };
+            var text = game.add.text(0, 0, ROOMS.recovery.name, style);
+            text.anchor.set(.5);
+            text.x = 400;
+            text.y = 300;
+
+            text = game.add.text(200, 100, ROOMS.trainHP.name, style);
+            text.anchor.set(.5);
+            text.x = 200;
+            text.y = 100;
+
+            text = game.add.text(600, 100, ROOMS.trainATT.name, style);
+            text.anchor.set(.5);
+            text.x = 600;
+            text.y = 100;
+
+            text = game.add.text(200, 500, ROOMS.trainDEF.name, style);
+            text.anchor.set(.5);
+            text.x = 200;
+            text.y = 500;
+
+            text = game.add.text(600, 500, ROOMS.trainSPD.name, style);
+            text.anchor.set(.5);
+            text.x = 600;
+            text.y = 500;
+        }
+
+        function createMonsters() {
+
+            //Create monsters group
+            monsters = game.add.group();
+
+            //Enable Physics for monsters
+            monsters.enableBody = true;
+            monsters.physicsBodyType = Phaser.Physics.P2JS;
+
+            //Create Monster list to hold all monsters and properties
+            monsterList = [];
+
+            //Create Monster
+            //Check for local save data
+            if (hasLocalData() && !DEBUG_RELOAD) {
+                console.log("Loading Monster from Local Data");
+                for (var k = 0; k < localStorage.getItem("numOfMobs"); k++) {
+                    var monster = loadMonsterBase(k);
+                    monsterList.push(monster);
+                }
+            } // else Make New Data
+            else {
+                console.log("Creating New Monster");
+                monsterList.push(createMonsterBase(DEX.dragonite));
+                monsterList.push(createMonsterBase(DEX.porygon));
+                monsterList.push(createMonsterBase(DEX.slowking));
+                monsterList.push(createMonsterBase(DEX.dragonite));
+                monsterList.push(createMonsterBase(DEX.porygon));
+                monsterList.push(createMonsterBase(DEX.slowking));
+            }
+
+            //Setup Monster
+            console.log("Preparing Monsters");
+            for (var mob of monsterList) {
+                mob = addMonsterAnimations(mob);
+                mob = addMonsterHUD(mob);
+                mob = addMonsterPhysics(mob);
+                mob = addMonsterEnvironmentControls(mob);
+                mob = addMonsterHealthControls(mob);
+                mob = addMonsterNotifications(mob);
+
+                //Make Sure mob sprite is up to date
+                mob.updateHealth();
+            }
+
+            //Save Data Back to Local
+            //console.log("Saving Data to Local");
+            //saveToLocal();
+            //Now done in update
+
+        }
+
+        function addNewMonster() {
+            var mob;
+            switch (game.rnd.integerInRange(0, 2)) {
+                case 0:
+                    mob = createMonsterBase(DEX.porygon);
+                    break;
+                case 1:
+                    mob = createMonsterBase(DEX.dragonite);
+                    break;
+
+                default:
+                    mob = createMonsterBase(DEX.slowking);
+            }
+            //Create Parts of Monster
+            mob = addMonsterAnimations(mob);
+            mob = addMonsterHUD(mob);
+            mob = addMonsterPhysics(mob);
+            mob = addMonsterEnvironmentControls(mob);
+            mob = addMonsterHealthControls(mob);
+            mob = addMonsterNotifications(mob);
+
+            monsterList.push(mob);
+
+        }
+
+        function createMonsterBase(species) {
+            //Create Monster in monsters group
+            var monster = monsters.create(400, 300, species.sprite);
+
+            return addMonsterData(monster, species);
+        }
+
+        function addMonsterData(monster, species) {
+            //Set New Sprite Data
+            {
+                monster.name = species.name;
+                monster.nature = species.natures[0];
+                monster.sprite = species.sprite;
+                monster.avater = species.avater;
+                //Set Stats
+                monster.maxHealth = species.base_hp;
+                monster.health = species.base_hp;
+                monster.attack = species.base_att;
+                monster.defense = species.base_def;
+                monster.speed = species.base_spd;
+            };
+
+            return monster;
+        }
+
+        function loadMonsterBase(index) {
+            var sprite = localStorage["sprite" + index];
+            var x = localStorage["x" + index];
+            var y = localStorage["y" + index];
+            var monster = monsters.create(x, y, sprite);
+
+            return loadMonsterData(monster, index);
+        }
+
+        function loadMonsterData(monster, index) {
+            monster.name = localStorage["name" + index];
+            monster.nature = localStorage["nature" + index];
+            monster.sprite = localStorage["sprite" + index];
+            monster.avater = localStorage["avater" + index];
+            //Set Stats
+            monster.maxHealth = parseInt(localStorage["maxHealth" + index]);
+            monster.health = parseInt(localStorage["health" + index]);
+            monster.attack = parseInt(localStorage["attack" + index]);
+            monster.defense = parseInt(localStorage["defense" + index]);
+            monster.speed = parseInt(localStorage["speed" + index]);
+
+            return monster;
+        }
+
+        function addMonsterAnimations(monster) {
+            //Create Animation for when held
+            //monster.animations.add('pickedup', [4, 1, 8], 10, true);
+            monster.animations.add('pickedup', [4, 9, 10], 5, true);
+            monster.animations.add('left', [3, 2, 1, 0], 2, true);
+            monster.animations.add('right', [5, 6, 7, 8], 2, true);
+            monster.animations.add('spin', [4, 11, 5, 12, 13, 14, 3, 15, 4], 20, false);
+            monster.animations.add('still', [4], 0, true);
+
+            return monster;
+        }
+
+        function addMonsterHUD(monster) {
+            //Add HealthBar
+            {
+                monster.healthBar = game.make.sprite(0, monster.height * -0.5 - 4, 'healthChunk');
+                monster.healthBar.scale.setTo(4, .5)
+                game.physics.p2.enable(monster.healthBar);
+                monster.healthBar.body.static = true;
+                monster.addChild(monster.healthBar);
+            };
+
+            //Add label
+            {
+                var style = {
+                    font: "8px Arial",
+                    align: "center",
+                };
+                monster.label = game.make.text(monster.width * -0.4, monster.height * -0.5 - 16, "", style);
+                //Add label to follow monster
+                monster.addChild(monster.label);
+            };
+
+            return monster;
+        }
+
+        function addMonsterPhysics(monster) {
+            //Enable Physics for Monster
+            {
+                game.physics.p2.enable(monster, false);
+                //Lock Angle so it does not rotate
+                monster.body.fixedRotation = true;
+                //Set Collision Group so it collides with all walls
+                monster.body.setCollisionGroup(playerCollisionGroup);
+                //Set Damping so it slides less
+                monster.body.damping = .2;
+                //Set Collisions
+                monster.body.collides([innerWallsCollisionGroup, outerWallsCollisionGroup]);
+            };
+
+            return monster;
+        }
+
+        function addMonsterEnvironmentControls(monster) {
+            //Set Room Stuff
+            {
+                monster.currentRoom = ROOMS.isInRoom(monster);
+                monster.pickedUp = false;
+                monster.clickable = true;
+                monster.roomCoolDown = game.time.now + 5000;
+            };
+
+            //Set Movement Stuff
+            {
+                monster.moveCoolDown = 0;
+            };
+
+            return monster;
+        }
+
+        function addMonsterHealthControls(monster) {
+            //Create New Heal and Damage Functions
+            monster.heal = function(amount) {
+                //Check for correct type
+                if (this.health.typeof !== "number") {
+                    this.health = parseInt(this.health);
+                }
+
+                this.health = Math.min(
+                    this.maxHealth,
+                    this.health + amount);
+
+                //Check Death Status
+                if (!this.alive && this.health > 0) {
+                    this.alive = true;
+                    //this.alpha = 1;
+                    this.tint = 0xFFFFFF;
+                }
+                this.updateHealth();
+            }
+
+            monster.damage = function(amount) {
+                //Check for correct type
+                if (this.health.typeof !== "number") {
+                    this.health = parseInt(this.health) - amount;
+                }
+                else {
+                    this.health -= amount;
+                }
+
+                //check Death Status
+                if (this.alive && this.health <= 0) {
+                    this.alive = false;
+                    //this.alpha = .2;
+                    this.tint = 0xFF0000;
+                }
+                this.updateHealth();
+            }
+
+            //Create New Method to handle healthbar
+            monster.updateHealth = function() {
+                this.healthBar.scale.setTo(this.health / this.maxHealth * 4, .5);
+            }
+
+            return monster;
+        }
+
+        function addMonsterNotifications(monster) {
+            //Create Method to do a small animation for a stat change
+            monster.notifyStatChange = function(str) {
+                //Change to unclickable
+                this.clickable = false;
+
+                //Stop Movement
+                this.body.setZeroVelocity();
+
+                //Start Celebration Animation
+                this.animations.play('spin');
+                //console.log(this.animations)
+
+                //Display Text
+                this.label.text = str;
+                this.label.alpha = 1;
+                game.add.tween(this.label).to({
+                    alpha: 0
+                }, 1500, Phaser.Easing.Linear.None, true);
+
+                //Set up Tween to return clickable
+                game.time.events.add(1500, function() {
+                    this.clickable = true;
+                    //this.animations.stop('spin');
+                }, this);
+            }
+
+            return monster;
+        }
+
+        function createMonster(species, x, y) {
+            //Create Monster in monsters group
+            var monster = monsters.create(x, y, species.sprite);
+            monster.frame = 4;
+
+            monster.animations.add('pickedup', [4, 1, 8], 10, true);
+
+            //Add HealthBar
+            {
+                monster.healthBar = game.make.sprite(0, -24, 'healthChunk');
+                monster.healthBar.scale.setTo(4, .5)
+                game.physics.p2.enable(monster.healthBar);
+                monster.healthBar.body.static = true;
+                monster.addChild(monster.healthBar);
+            };
+
+            //Add label
+            {
+                var style = {
+                    font: "12px Arial",
+                    //fill: "#ff0044",
+                    align: "center",
+                    //backgroundColor: "#ffff00"
+                };
+                monster.label = game.make.text(monster.width / -2, -48, "", style);
+                //Add label to follow monster
+                monster.addChild(monster.label);
+            };
+
+            //Enable Physics for Monster
+            {
+                game.physics.p2.enable(monster, false);
+                //Lock Angle so it does not rotate
+                monster.body.fixedRotation = true;
+                //Set Collision Group so it collides with all walls
+                monster.body.setCollisionGroup(playerCollisionGroup);
+                //Set Damping so it slides less
+                monster.body.damping = .2;
+                //Set Collisions
+                monster.body.collides([innerWallsCollisionGroup, outerWallsCollisionGroup]);
+            };
+
+            //Set New Sprite Data
+            {
+                monster.name = species.name;
+                monster.nature = species.natures[0];
+                //Set Stats
+                monster.maxHealth = species.base_hp;
+                monster.health = species.base_hp;
+                monster.attack = species.base_att;
+                monster.defense = species.base_def;
+                monster.speed = species.base_spd;
+            };
+
+            //Set Room Stuff
+            {
+                monster.currentRoom = ROOMS.isInRoom(monster);
+                monster.pickedUp = false;
+                monster.clickable = true;
+                monster.roomCoolDown = game.time.now + 5000;
+            };
+
+            //Set Movement Stuff
+            {
+                monster.moveCoolDown = 0;
+            };
+
+            //Create New Heal and Damage Functions
+            monster.heal = function(amount) {
+                this.health = Math.min(
+                    this.maxHealth,
+                    this.health + amount);
+
+                //Check Death Status
+                if (!this.alive && this.health > 0) {
+                    this.alive = true;
+                    //this.alpha = 1;
+                    this.tint = 0xFFFFFF;
+                }
+                this.updateHealth();
+            }
+
+            monster.damage = function(amount) {
+                this.health = this.health - amount;
+
+                //check Death Status
+                if (this.alive && this.health <= 0) {
+                    this.alive = false;
+                    //this.alpha = .2;
+                    this.tint = 0xFF0000;
+                }
+                this.updateHealth();
+            }
+
+            //Create New Method to handle healthbar
+            monster.updateHealth = function() {
+                this.healthBar.scale.setTo(this.health / this.maxHealth * 4, .5);
+            }
+
+            //Create Method to do a small animation for a stat change
+            monster.notifyStatChange = function(str) {
+                //Change to unclickable
+                this.clickable = false;
+
+                //Start Celebration Animation
+                //game.add.tween(this).to({ angle: 360 }, 1500, Phaser.Easing.Linear.None, true);
+
+                //Display Text
+                this.label.text = str;
+                this.label.alpha = 1;
+                game.add.tween(this.label).to({
+                    alpha: 0
+                }, 1500, Phaser.Easing.Linear.None, true);
+
+                //Set up Tween to return clickable
+                game.time.events.add(1500, function() {
+                    this.clickable = true;
+                }, this);
+            }
+
+            return monster;
+        }
+
+        function createMouse() {
+            //Create Mouse Body
+            mouseBody = game.add.sprite(100, 100, '');
+
+            //Set Mouse Physics
+            {
+                game.physics.p2.enable(mouseBody, false);
+                mouseBody.body.static = true;
+                mouseBody.body.setCircle(5);
+                mouseBody.body.data.shapes[0].sensor = true;
+            };
+
+            //Add Mouse Input Handlers
+            {
+                game.input.onDown.add(click, this);
+                game.input.onUp.add(release, this);
+                game.input.addMoveCallback(move, this);
+            };
+        }
+
+        function click(pointer) {
+            //Find for bodies under mouse
+            var bodies = game.physics.p2.hitTest(pointer.position, monsters.children);
+
+            //Check if any bodies clicked
+            if (bodies.length && bodies[0].parent.sprite.clickable) {
+                //Attach to the first body the mouse hit
+                mouseSpring = game.physics.p2.createSpring(mouseBody, bodies[0], 5, 500, 15);
+
+                //Set MouseTarget so on 'release' can undo clicking
+                mouseTarget = bodies[0].parent;
+
+                //Set Selected
+                selectedMonster = mouseTarget.sprite;
+
+                //Change Collision Group so it can move though inner walls
+                mouseTarget.setCollisionGroup(mouseCollisionGroup);
+
+                //Set Damping so it slides less
+                mouseTarget.damping = .999999;
+
+                //Set picked up property so AI will disable
+                mouseTarget.sprite.pickedUp = true;
+
+                //Start Animation
+                mouseTarget.sprite.animations.play('pickedup');
+            }
+        }
+
+        function release() {
+            //Fixes issue with null object
+            if (mouseTarget === null) {
+                return;
+            }
+            //Set collisions back to normal
+            mouseTarget.setCollisionGroup(playerCollisionGroup);
+
+            //Set Damping so it slides
+            game.add.tween(mouseTarget).to({
+                damping: .2
+            }, 1500, Phaser.Easing.Linear.None, true);
+
+            //Stop Velocity
+            mouseTarget.setZeroVelocity();
+
+            //Remove Spring so it stops following mouse
+            game.physics.p2.removeSpring(mouseSpring);
+            //Re-enable AI
+            mouseTarget.sprite.pickedUp = false;
+            mouseTarget.sprite.animations.stop('pickedup', true);
+
+            //Find room monster is placed in
+            mouseTarget.sprite.currentRoom = ROOMS.isInRoom(mouseTarget.sprite);
+
+            //Fixes issue with clicking blank area and changing last guys room
+            mouseTarget = null;
+        }
+
+        function move(pointer, x, y, isDown) {
+            //Moves mouse pointer and thus spring
+            mouseBody.body.x = x;
+            mouseBody.body.y = y;
+        }
+
+        function update() {
+            for (var mob of monsterList) {
+                passizeAI(mob);
+            }
+
+            if (saveTimer < game.time.now) {
+                console.log("Automatic Save Running...");
+                saveTimer = game.time.now + (60 * 1000);
+                saveToLocal();
+            }
+
+            //displayMonsterInfo(selectedMonster);
+            displayAllMonsterInfo();
+        }
+
+        //Create AI for moving
+        function passizeAI(mob) {
+
+            if (mob.pickedUp) {
+                //If picked up then do nothing
+                return;
+            }
+
+            //Check Current Room
+            mob.currentRoom = ROOMS.isInRoom(mob);
+
+            //Do Room Action
+            mob.currentRoom.action(mob);
+
+            //Check for nearby food and move toward it
+            //Check for poop and move away from it
+
+            //Check for other Monster
+
+
+            //Determine what direction to move randomly
+            if (mob.moveCoolDown < game.time.now && game.rnd.integerInRange(1, 10) > 2 && mob.alive) {
+                //Apply a Cool Down
+                mob.moveCoolDown = game.time.now + 3000;
+
+                //generate random x
+                var rx = game.rnd.integerInRange(-200, 1000);
+                //Generate random y
+                var ry = game.rnd.integerInRange(-200, 800);
+                //Generate Random Speed
+                var spd = game.rnd.integerInRange(500, 2000);
+                //Move Mob
+                accelerateToPoint(mob, rx, ry, spd);
+            }
+
+            if (mob.clickable === true) {
+                if (mob.alive && mob.body.velocity.x > 0) {
+                    //Start Animation
+                    mob.animations.play('right');
+                }
+                else if (mob.alive && mob.body.velocity.x < 0) {
+                    //Start Animation
+                    mob.animations.play('left');
+                }
+                else {
+                    mob.animations.play('still');
+                }
+            }
+
+
+        }
+
+        function render() {
+
+        }
+
+        var DEX = {
+            porygon: {
+                name: "Porygon",
+                natures: ["Brave", "Silly", "Sleepy"],
+                sprite: 'porygon',
+                avater: 'assets/icon-porygon.png',
+                base_hp: 65,
+                base_att: 60,
+                base_def: 70,
+                base_spd: 40,
+            },
+
+            dragonite: {
+                name: "Dragonite",
+                natures: ["Silly", "Brave", "Sleepy"],
+                sprite: 'dragonite',
+                avater: 'assets/icon-dragonite.png',
+                base_hp: 91,
+                base_att: 134,
+                base_def: 95,
+                base_spd: 80
+            },
+
+            slowking: {
+                name: "Slowking",
+                natures: ["Silly", "Brave", "Sleepy"],
+                sprite: 'slowking',
+                avater: 'assets/icon-slowking.png',
+                base_hp: 95,
+                base_att: 75,
+                base_def: 80,
+                base_spd: 30
+            },
+        }
+
+        var ROOMS = {
+            home: {
+                name: "",
+
+                action: function(mob) {
+                    //Do Nothing
+                },
+
+            },
+
+            recovery: {
+                name: "Recovery Room",
+                coolDown: 5000,
+
+                action: function(mob) {
+                    if (mob.roomCoolDown < game.time.now && mob.health !== mob.maxHealth) {
+                        //Apply a 10 second Cool Down
+                        mob.roomCoolDown = game.time.now + this.coolDown;
+                        //Heal Mob
+                        mob.heal(1);
+
+                        console.log(mob.name + " is healing in the " + this.name + ". Health is now " + mob.health + "/" + mob.maxHealth);
+
+                        mob.notifyStatChange("heal");
+                    }
+                },
+
+                check: function(x, y) {
+                    //Check first Box
+                    if (x >= 300 && x <= 500 && y >= 200 && y <= 400) {
+                        return true;
+                    }
+
+                    return false;
+                },
+            },
+
+            trainHP: {
+                name: "HP Training Room",
+                coolDown: 10000,
+
+                action: function(mob) {
+                    if (mob.roomCoolDown < game.time.now && mob.alive) {
+                        //Apply a 25 second Cool Down
+                        mob.roomCoolDown = game.time.now + this.coolDown;
+                        //Traing Mob
+                        if (mob.maxHealth.typeof !== "number") {
+                            mob.maxHealth = parseInt(mob.maxHealth) + 1;
+                        }
+                        else {
+                            mob.maxHealth += 1;
+                        }
+
+                        //Hurt Mob
+                        mob.damage(1);
+
+                        console.log(mob.name + " is training in the " + this.name + ". Stat is now " + mob.maxHealth);
+
+                        mob.notifyStatChange("+hp");
+                    }
+                },
+
+                check: function(x, y) {
+                    //Check first Box
+                    if (x >= 0 && x <= 400 && y >= 0 && y <= 200) {
+                        return true;
+                    } //Check Second Box
+                    else if (x >= 0 && x <= 300 && y >= 200 && y <= 300) {
+                        return true;
+                    }
+
+                    return false;
+                },
+            },
+
+            trainATT: {
+                name: "Attack Training Room",
+                coolDown: 10000,
+
+                action: function(mob) {
+                    if (mob.roomCoolDown < game.time.now && mob.alive) {
+                        //Apply a 25 second Cool Down
+                        mob.roomCoolDown = game.time.now + this.coolDown;
+                        //Traing Mob
+                        if (mob.maxHealth.typeof !== "number") {
+                            mob.attack = parseInt(mob.attack) + 1;
+                        }
+                        else {
+                            mob.attack += 1;
+                        }
+                        //Hurt Mob
+                        mob.damage(1);
+
+                        console.log(mob.name + " is training in the " + this.name + ". Stat is now " + mob.attack);
+
+                        mob.notifyStatChange("+att");
+                    }
+                },
+
+                check: function(x, y) {
+                    //Check first Box
+                    if (x >= 400 && x <= 800 && y >= 0 && y <= 200) {
+                        return true;
+                    } //Check Second Box
+                    else if (x >= 500 && x <= 800 && y >= 200 && y <= 300) {
+                        return true;
+                    }
+
+                    return false;
+                },
+            },
+
+            trainDEF: {
+                name: "Defense Training Room",
+                coolDown: 10000,
+
+                action: function(mob) {
+                    if (mob.roomCoolDown < game.time.now && mob.alive) {
+                        //Apply a 25 second Cool Down
+                        mob.roomCoolDown = game.time.now + this.coolDown;
+                        //Traing Mob
+                        if (mob.maxHealth.typeof !== "number") {
+                            mob.defense = parseInt(mob.defense) + 1;
+                        }
+                        else {
+                            mob.defense += 1;
+                        }
+                        //Hurt Mob
+                        mob.damage(1);
+
+                        console.log(mob.name + " is training in the " + this.name + ". Stat is now " + mob.defense);
+
+                        mob.notifyStatChange("+def");
+                    }
+                },
+
+                check: function(x, y) {
+                    //Check first Box
+                    if (x >= 0 && x <= 300 && y >= 300 && y <= 400) {
+                        return true;
+                    } //Check Second Box
+                    else if (x >= 0 && x <= 400 && y >= 400 && y <= 600) {
+                        return true;
+                    }
+
+                    return false;
+                },
+            },
+
+            trainSPD: {
+                name: "Speed Training Room",
+                coolDown: 10000,
+
+                action: function(mob) {
+                    if (mob.roomCoolDown < game.time.now && mob.alive) {
+                        //Apply a 25 second Cool Down
+                        mob.roomCoolDown = game.time.now + this.coolDown;
+                        //Traing Mob
+                        if (mob.maxHealth.typeof !== "number") {
+                            mob.speed = parseInt(mob.speed) + 1;
+                        }
+                        else {
+                            mob.speed += 1;
+                        }
+                        //Hurt Mob
+                        mob.damage(1);
+
+                        console.log(mob.name + " is training in the " + this.name + ". Stat is now " + mob.speed);
+
+                        mob.notifyStatChange("+spd");
+                    }
+                },
+
+                check: function(x, y) {
+                    //Check first Box
+                    if (x >= 500 && x <= 800 && y >= 400 && y <= 500) {
+                        return true;
+                    } //Check Second Box
+                    else if (x >= 400 && x <= 800 && y >= 400 && y <= 600) {
+                        return true;
+                    }
+
+                    return false;
+                },
+            },
+
+            isInRoom: function(mob) {
+                if (this.recovery.check(mob.x, mob.y)) {
+                    return this.recovery;
+                }
+                else if (this.trainHP.check(mob.x, mob.y)) {
+                    return this.trainHP;
+                }
+                else if (this.trainATT.check(mob.x, mob.y)) {
+                    return this.trainATT;
+                }
+                else if (this.trainDEF.check(mob.x, mob.y)) {
+                    return this.trainDEF;
+                }
+                else if (this.trainSPD.check(mob.x, mob.y)) {
+                    return this.trainSPD;
+                }
+                else {
+                    return this.home;
+                }
+
+            },
+        }
+
+        function accelerateToPoint(obj1, x, y, speed) {
+            if (typeof speed === 'undefined') {
+                speed = 60;
+            }
+            var angle = Math.atan2(y - obj1.y, x - obj1.x);
+            //obj1.body.rotation = angle + game.math.degToRad(90); // correct angle of angry bullets (depends on the sprite used)
+            obj1.body.force.x += Math.cos(angle) * speed; // accelerateToObject 
+            obj1.body.force.y += Math.sin(angle) * speed;
+        }
+
+        function saveToLocal() {
+            var i = 0;
+            for (var mob of monsterList) {
+                //Do not save if moving
+                if (!mob.pickedUp) {
+                    localStorage.setItem("name" + i, mob.name);
+                    localStorage.setItem("nature" + i, mob.nature);
+                    localStorage.setItem("maxHealth" + i, mob.maxHealth);
+                    localStorage.setItem("health" + i, mob.health);
+                    localStorage.setItem("attack" + i, mob.attack);
+                    localStorage.setItem("defense" + i, mob.defense);
+                    localStorage.setItem("speed" + i, mob.speed);
+                    localStorage.setItem("sprite" + i, mob.sprite);
+                    localStorage.setItem("avater" + i, mob.avater);
+                    localStorage.setItem("x" + i, mob.body.x);
+                    localStorage.setItem("y" + i, mob.body.y);
+                }
+                i++;
+            }
+            //Save misc info
+            localStorage.setItem("numOfMobs", i);
+
+        }
+
+        function hasLocalData() {
+            if (parseInt(localStorage.getItem("numOfMobs")) > 0) {
+                return true;
+            }
+            return false;
+        }
+
+        function displayAllMonsterInfo() {
+            var s = "<tr>";
+            var i = 0;
+            var offset = 6;
+            if(monsterList.length <= 6){
+                offset = 3;
+            }
+            for (var mob of monsterList) {
+                s += createMonsterPanel(mob);
+                i++;
+                //Put Panels on next Row
+                if (i % offset === 0) {
+                    s += "</tr><tr>";
+                }
+            }
+
+            s += "</tr>";
+
+            document.getElementById("info").innerHTML = s;
+        }
+
+        function displayMonsterInfo(index, mob) {
+            document.getElementById("avatar" + index).src = mob.avater;
+
+            document.getElementById("name" + index).innerHTML = mob.name;
+            document.getElementById("health" + index).innerHTML = mob.health + "/" + mob.maxHealth;
+            document.getElementById("attack" + index).innerHTML = mob.attack;
+            document.getElementById("defense" + index).innerHTML = mob.defense;
+            document.getElementById("speed" + index).innerHTML = mob.speed;
+
+        }
+
+        function createMonsterPanel(mob) {
+            var s = "";
+
+            s += "<td>";
+
+            s += "<table style=\"width:100%;height:100%; border: 5px solid black;\">";
+            s += "<tr><td colspan=\"2\" align=\"center\">"
+
+            //Add image
+            s += "<img src=" + mob.avater + " ></img>";
+            s += "</td></tr>";
+
+            //Add Name
+            s += "<tr><td style=\"font-weight:bold\">Name</td>";
+            s += "<td>" + mob.name + "</td>";
+            s += "</tr>"
+
+            //Add Health
+            s += "<tr><td style=\"font-weight:bold\">Health</td>";
+            s += "<td>" + mob.health + "/" + mob.maxHealth + "</td>";
+            s += "</tr>"
+
+            //Add Attack
+            s += "<tr><td style=\"font-weight:bold\">Attack</td>";
+            s += "<td>" + mob.attack + "</td>";
+            s += "</tr>"
+
+            //Add Defene
+            s += "<tr><td style=\"font-weight:bold\">Defense</td>";
+            s += "<td>" + mob.defense + "</td>";
+            s += "</tr>"
+
+            //Add Speed
+            s += "<tr><td style=\"font-weight:bold\">Speed</td>";
+            s += "<td>" + mob.speed + "</td>";
+            s += "</tr>"
+
+            s += "</table>";
+            s += "</td>"
+
+            return s;
+        }
+    </script>
+
+</body>
+
+</html>
